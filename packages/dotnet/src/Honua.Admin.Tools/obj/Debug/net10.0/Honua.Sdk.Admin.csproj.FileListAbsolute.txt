@@ -1,0 +1,15 @@
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/bin/Debug/net10.0/Honua.Sdk.Admin.deps.json
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/bin/Debug/net10.0/Honua.Sdk.Admin.dll
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/bin/Debug/net10.0/Honua.Sdk.Admin.pdb
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/bin/Debug/net10.0/Honua.Sdk.Admin.xml
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/Honua.Sdk.Admin.csproj.AssemblyReference.cache
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/Honua.Sdk.Admin.GeneratedMSBuildEditorConfig.editorconfig
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/Honua.Sdk.Admin.AssemblyInfoInputs.cache
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/Honua.Sdk.Admin.AssemblyInfo.cs
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/Honua.Sdk.Admin.csproj.CoreCompileInputs.cache
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/Honua.Sdk.Admin.sourcelink.json
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/Honua.Sdk.Admin.dll
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/refint/Honua.Sdk.Admin.dll
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/Honua.Sdk.Admin.xml
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/Honua.Sdk.Admin.pdb
+/home/makani/honua-sdk-dotnet/src/Honua.Sdk.Admin/obj/Debug/net10.0/ref/Honua.Sdk.Admin.dll
