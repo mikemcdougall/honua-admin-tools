@@ -1,0 +1,96 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "honua-admin"
+version = "1.0.0"
+description = "Python admin tooling for Honua geospatial platform"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.9"
+authors = [
+    { name = "Honua Project Contributors", email = "noreply@honua.dev" },
+]
+keywords = [
+    "honua",
+    "geospatial",
+    "gis",
+    "admin",
+    "tools",
+    "management",
+    "bulk-operations",
+    "grpc",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "pydantic>=2.0.0",
+    "click>=8.0.0",
+    "rich>=13.0.0",
+    "httpx>=0.25.0",
+    "aiofiles>=23.0.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+
+[project.scripts]
+honua-admin = "honua_admin.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mikemcdougall/honua-admin-tools"
+Repository = "https://github.com/mikemcdougall/honua-admin-tools.git"
+Issues = "https://github.com/mikemcdougall/honua-admin-tools/issues"
+Documentation = "https://github.com/mikemcdougall/honua-admin-tools/tree/master/packages/python/honua-admin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/honua_admin"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.md",
+    "/CHANGELOG.md",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "--cov=honua_admin --cov-report=term-missing"
