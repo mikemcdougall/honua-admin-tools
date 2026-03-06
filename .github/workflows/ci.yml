@@ -1,0 +1,244 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # .NET Package Build and Test
+  dotnet-build:
+    name: Build .NET Package
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore Dependencies
+      run: |
+        cd packages/dotnet/src/Honua.Admin.Tools
+        dotnet restore
+
+    - name: Build
+      run: |
+        cd packages/dotnet/src/Honua.Admin.Tools
+        dotnet build --configuration Release --no-restore
+
+    - name: Test
+      run: |
+        cd packages/dotnet/src/Honua.Admin.Tools
+        # Add test command when tests are available
+        # dotnet test --configuration Release --no-build --verbosity normal
+
+    - name: Pack NuGet Package
+      run: |
+        cd packages/dotnet/src/Honua.Admin.Tools
+        dotnet pack --configuration Release --no-build --output ../../../../artifacts/nuget
+
+    - name: Upload .NET Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dotnet-package
+        path: artifacts/nuget/*.nupkg
+
+  # JavaScript/NPM Package Build and Test
+  npm-build:
+    name: Build NPM Packages
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install Admin Tools Dependencies
+      run: |
+        cd packages/javascript/admin-tools
+        npm ci
+
+    - name: Install CLI Dependencies
+      run: |
+        cd packages/javascript/cli
+        npm ci
+
+    - name: Type Check
+      run: |
+        cd packages/javascript/admin-tools && npm run typecheck
+        cd ../cli && npm run typecheck
+
+    - name: Lint
+      run: |
+        cd packages/javascript/admin-tools && npm run lint
+        cd ../cli && npm run lint
+
+    - name: Build Packages
+      run: |
+        cd packages/javascript/admin-tools && npm run build
+        cd ../cli && npm run build
+
+    - name: Run Tests
+      run: |
+        cd packages/javascript/admin-tools && npm test
+        cd ../cli && npm test
+
+    - name: Package Tarballs
+      run: |
+        mkdir -p artifacts/npm
+        cd packages/javascript/admin-tools && npm pack --pack-destination ../../../artifacts/npm/
+        cd ../cli && npm pack --pack-destination ../../../artifacts/npm/
+
+    - name: Upload NPM Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: npm-packages
+        path: artifacts/npm/*.tgz
+
+  # Python Package Build and Test
+  python-build:
+    name: Build Python Package
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install Build Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine hatch
+
+    - name: Install Package Dependencies
+      run: |
+        cd packages/python/honua-admin
+        pip install -e ".[dev]"
+
+    - name: Run Linting
+      run: |
+        cd packages/python/honua-admin
+        black --check src/
+        isort --check-only src/
+        flake8 src/
+
+    - name: Run Type Checking
+      run: |
+        cd packages/python/honua-admin
+        mypy src/honua_admin/
+
+    - name: Run Tests
+      run: |
+        cd packages/python/honua-admin
+        pytest
+
+    - name: Build Package
+      run: |
+        mkdir -p artifacts/python
+        cd packages/python/honua-admin
+        python -m build --outdir ../../../artifacts/python
+
+    - name: Check Package
+      run: |
+        cd artifacts/python
+        twine check *
+
+    - name: Upload Python Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: python-package
+        path: artifacts/python/*
+
+  # Integration Tests
+  integration-test:
+    name: Integration Testing
+    runs-on: ubuntu-latest
+    needs: [dotnet-build, npm-build, python-build]
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Test .NET Package Installation
+      run: |
+        # Test NuGet package in a temp project
+        mkdir -p test-integration/dotnet && cd test-integration/dotnet
+        dotnet new console
+        dotnet add package --source ../../artifacts/dotnet-package/ Honua.Admin.Tools
+        dotnet build
+
+    - name: Test NPM Package Installation
+      run: |
+        # Test NPM packages in temp project
+        mkdir -p test-integration/npm && cd test-integration/npm
+        npm init -y
+        npm install ../../artifacts/npm-packages/honua-*.tgz
+        node -e "console.log('NPM packages installed successfully')"
+
+    - name: Test Python Package Installation
+      run: |
+        # Test Python package installation
+        pip install artifacts/python-package/honua_admin-*.whl
+        python -c "import honua_admin; print('Python package imported successfully')"
+
+  # Validation Summary
+  validate:
+    name: Validation Summary
+    runs-on: ubuntu-latest
+    needs: [dotnet-build, npm-build, python-build, integration-test]
+    if: always()
+
+    steps:
+    - name: Check Build Status
+      run: |
+        echo "Build Status Summary:"
+        echo "✅ .NET Package: ${{ needs.dotnet-build.result }}"
+        echo "✅ NPM Packages: ${{ needs.npm-build.result }}"
+        echo "✅ Python Package: ${{ needs.python-build.result }}"
+        echo "✅ Integration Tests: ${{ needs.integration-test.result }}"
+
+        if [[ "${{ needs.dotnet-build.result }}" == "success" && "${{ needs.npm-build.result }}" == "success" && "${{ needs.python-build.result }}" == "success" && "${{ needs.integration-test.result }}" == "success" ]]; then
+          echo "🎉 All packages built and tested successfully!"
+        else
+          echo "❌ Some builds failed - check the logs above"
+          exit 1
+        fi

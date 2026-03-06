@@ -1,0 +1,252 @@
+name: Publish All Packages
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version to publish'
+        required: true
+        type: string
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Determine version across all jobs
+  version:
+    name: Determine Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+    steps:
+    - name: Get Version
+      id: version
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+        fi
+        echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Publishing version: ${VERSION}"
+
+  # Build all packages
+  build-all:
+    name: Build All Packages
+    runs-on: ubuntu-latest
+    needs: version
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # .NET Build
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Update .NET Version
+      run: |
+        cd packages/dotnet/src/Honua.Admin.Tools
+        sed -i "s/<Version>.*<\/Version>/<Version>${{ needs.version.outputs.version }}<\/Version>/" Honua.Admin.Tools.csproj
+
+    - name: Build .NET Package
+      run: |
+        cd packages/dotnet/src/Honua.Admin.Tools
+        dotnet restore
+        dotnet build --configuration Release --no-restore
+        dotnet pack --configuration Release --no-build --output ../../../../artifacts/nuget
+
+    # NPM Build
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install and Build NPM Packages
+      run: |
+        # Admin Tools
+        cd packages/javascript/admin-tools
+        npm ci
+        npm version ${{ needs.version.outputs.version }} --no-git-tag-version
+        npm run build
+        npm pack --pack-destination ../../../artifacts/npm/
+
+        # CLI
+        cd ../cli
+        npm ci
+        npm version ${{ needs.version.outputs.version }} --no-git-tag-version
+        npm run build
+        npm pack --pack-destination ../../../artifacts/npm/
+
+    # Python Build
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Build Python Package
+      run: |
+        cd packages/python/honua-admin
+        python -m pip install --upgrade pip build twine
+
+        # Update version in pyproject.toml and __init__.py
+        sed -i "s/version = \"1.0.0\"/version = \"${{ needs.version.outputs.version }}\"/" pyproject.toml
+        sed -i "s/__version__ = \"1.0.0\"/__version__ = \"${{ needs.version.outputs.version }}\"/" src/honua_admin/__init__.py
+
+        mkdir -p ../../../artifacts/python
+        python -m build --outdir ../../../artifacts/python
+
+    - name: Upload All Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: all-packages-${{ needs.version.outputs.version }}
+        path: artifacts/
+
+  # Publish .NET to NuGet
+  publish-dotnet:
+    name: Publish .NET to NuGet
+    runs-on: ubuntu-latest
+    needs: [version, build-all]
+    environment: production
+
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: all-packages-${{ needs.version.outputs.version }}
+        path: ./artifacts
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Publish to NuGet
+      run: dotnet nuget push ./artifacts/nuget/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  # Publish to NPM
+  publish-npm:
+    name: Publish to NPM
+    runs-on: ubuntu-latest
+    needs: [version, build-all]
+    environment: production
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: all-packages-${{ needs.version.outputs.version }}
+        path: ./artifacts
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        registry-url: 'https://registry.npmjs.org/'
+
+    - name: Extract and Publish NPM Packages
+      run: |
+        cd artifacts/npm
+        for package in *.tgz; do
+          echo "Publishing $package to NPM..."
+          npm publish "$package" --access public
+        done
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Publish to PyPI
+  publish-python:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [version, build-all]
+    environment: production
+
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: all-packages-${{ needs.version.outputs.version }}
+        path: ./artifacts
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        packages-dir: artifacts/python/
+        verbose: true
+
+  # Create GitHub Release
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [version, publish-dotnet, publish-npm, publish-python]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: all-packages-${{ needs.version.outputs.version }}
+        path: ./artifacts
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: artifacts/**/*
+        generate_release_notes: true
+        make_latest: true
+        body: |
+          ## Honua Admin Tools v${{ needs.version.outputs.version }}
+
+          This release includes packages for multiple platforms:
+
+          ### .NET Package
+          - **Honua.Admin.Tools** v${{ needs.version.outputs.version }} - Available on [NuGet](https://www.nuget.org/packages/Honua.Admin.Tools/)
+          - Install: `dotnet add package Honua.Admin.Tools`
+
+          ### NPM Packages
+          - **@honua/admin-tools** v${{ needs.version.outputs.version }} - Available on [NPM](https://www.npmjs.com/package/@honua/admin-tools)
+          - **@honua/cli** v${{ needs.version.outputs.version }} - Available on [NPM](https://www.npmjs.com/package/@honua/cli)
+          - Install: `npm install @honua/admin-tools @honua/cli`
+
+          ### Python Package
+          - **honua-admin** v${{ needs.version.outputs.version }} - Available on [PyPI](https://pypi.org/project/honua-admin/)
+          - Install: `pip install honua-admin`
+
+          All packages are cross-platform and provide administrative functionality for Honua geospatial services.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Notification
+  notify:
+    name: Notify Success
+    runs-on: ubuntu-latest
+    needs: [version, publish-dotnet, publish-npm, publish-python]
+    if: success()
+
+    steps:
+    - name: Success Notification
+      run: |
+        echo "🎉 Successfully published Honua Admin Tools v${{ needs.version.outputs.version }}!"
+        echo ""
+        echo "Published packages:"
+        echo "  📦 .NET: Honua.Admin.Tools v${{ needs.version.outputs.version }}"
+        echo "  📦 NPM: @honua/admin-tools v${{ needs.version.outputs.version }}"
+        echo "  📦 NPM: @honua/cli v${{ needs.version.outputs.version }}"
+        echo "  📦 PyPI: honua-admin v${{ needs.version.outputs.version }}"
+        echo ""
+        echo "Installation commands:"
+        echo "  dotnet add package Honua.Admin.Tools"
+        echo "  npm install @honua/admin-tools @honua/cli"
+        echo "  pip install honua-admin"
